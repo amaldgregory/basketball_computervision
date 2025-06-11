@@ -53,11 +53,14 @@ class PoseDataExtractor:
         pose_data = []
         
         for result in results:
-            if result.keypoints is not None:
+            if result.keypoints is not None and result.keypoints.xy is not None and result.keypoints.conf is not None:
                 keypoints = result.keypoints.xy.cpu().numpy()
                 confidences = result.keypoints.conf.cpu().numpy()
-                
-                for person_idx, (kpts, conf) in enumerate(zip(keypoints, confidences)):
+            else:
+                print("DEBUG : Skipping frame: keypoints.xy or keypoints.conf is None")
+                continue  # Skip this result if keypoints are incomplete
+
+            for person_idx, (kpts, conf) in enumerate(zip(keypoints, confidences)):
                     person_data = {
                         'person_id': person_idx,
                         'keypoints': {},

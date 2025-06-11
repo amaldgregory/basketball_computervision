@@ -69,3 +69,7 @@ coverage.xml
 # Windows
 Thumbs.db
 Desktop.ini 
+
+
+exports/
+output/
