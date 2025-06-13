@@ -7,6 +7,39 @@ import math
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 
+#returns (x,y coordinates)
+def detect_ball(frame):
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    
+    # Basketball orange color range in HSV format 
+    lower_orange = np.array([5, 100, 100])
+    upper_orange = np.array([20, 255, 255])
+    
+    mask = cv2.inRange(hsv, lower_orange, upper_orange)
+    
+    # Morphological ops to clean noise
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+
+    # Find contours
+    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) #second return element is hierarchy of countours which is irrelevant for our application
+    
+    if contours:
+        largest = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(largest) > 100:  # filter small detections
+            (x, y), radius = cv2.minEnclosingCircle(largest)
+            center = (int(x), int(y))
+            radius = int(radius)
+            return center, radius
+    return None, None
+
+#returns boolean value
+def is_shot_taken(ball_center, wrist, prev_ball_center, threshold=50):  #the threshold value is the minimum distance for the ball to have moved to be considered a shot
+    if prev_ball_center is None:
+        return False
+    distance = np.linalg.norm(np.array(ball_center) - np.array(prev_ball_center))
+    hand_dist = np.linalg.norm(np.array(ball_center) - np.array(wrist))
+    return (distance > threshold and hand_dist > 80)
+
 
 def verdict_predictor(l_angle, r_angle, l_knee_angle, r_knee_angle):
     verdict = "Good Shot Form"
@@ -14,11 +47,11 @@ def verdict_predictor(l_angle, r_angle, l_knee_angle, r_knee_angle):
 
     if not (70 <= r_angle <= 120 or 70 <= l_angle <= 120):
         verdict = "Poor Shot Form"
-        explanation.append("Elbow angle not in shooting range (70–120°)")
+        explanation.append("Elbow angle not in shooting range (70-120o)")
 
     if l_knee_angle> 150 or r_knee_angle>150:
         verdict = "Poor Shot Form"
-        explanation.append("Leg not bent enough (<150° knee angle)")
+        explanation.append("Leg not bent enough (<150o knee angle)")
 
     # Display verdict and explanation
     cv2.putText(frame, verdict, (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
@@ -48,11 +81,20 @@ def calculate_angle(a, b, c):
 pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 cap = cv2.VideoCapture(0)
 
+#initialize previous ball position - starting at null
+prev_ball_center = None
+
+desired_width = 720  
+desired_height = 480
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
-    
+
+    #making the frame bigger
+    frame = cv2.resize(frame, (desired_width, desired_height))
+
     # Convert to RGB
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = pose.process(rgb_frame)
@@ -94,17 +136,19 @@ while cap.isOpened():
         l_ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x * w,
                    landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y * h]
 
-        
-        # Calculate elbow angle
+        #calculating angles
         l_angle = calculate_angle(l_shoulder, l_elbow, l_wrist)
         r_angle = calculate_angle(r_shoulder, r_elbow, r_wrist)
         l_knee_angle = calculate_angle(l_hip, l_knee, l_ankle)
         r_knee_angle = calculate_angle(r_hip, r_knee, r_ankle)
         
-        # Display angle
-        #cv2.putText(frame, f'Elbow Angle: {int(l_angle)}', 
-                   #tuple(np.multiply(l_elbow, [1, 1]).astype(int)), 
-                   #cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        ball_center, ball_radius = detect_ball(frame)
+
+        if ball_center:
+            cv2.circle(frame, ball_center, ball_radius, (0, 140, 255), 2)
+            cv2.putText(frame, "Ball", (ball_center[0]-10, ball_center[1]-10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 140, 255), 2)
+
         
         cv2.putText(frame, f'L Elbow: {int(l_angle)}0', 
            (int(l_elbow[0]) - 50, int(l_elbow[1]) - 20), 
@@ -122,7 +166,12 @@ while cap.isOpened():
             (int(l_knee[0]) - 30, int(l_knee[1]) - 20),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
         
-        verdict_predictor(l_angle=l_angle, r_angle=r_angle, l_knee_angle=l_knee_angle, r_knee_angle=r_knee_angle)
+        #for right now will only work for right handed players, will need to decide which hand to consider in the future
+        if ball_center and is_shot_taken(ball_center, r_wrist, prev_ball_center):
+            print("Shot taken! Evaluate form now")
+            verdict_predictor(l_angle=l_angle, r_angle=r_angle, l_knee_angle=l_knee_angle, r_knee_angle=r_knee_angle) #if ball released then do the verdict
+
+        prev_ball_center = ball_center
 
         # Draw pose landmarks
         mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
