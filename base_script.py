@@ -130,42 +130,46 @@ def record_shot_data(angles, score, success):
     form_scores.append(score)
 
 #returns (x,y coordinates)
-def detect_ball(frame):
+def detect_ball(frame, l_wrist=None, r_wrist=None):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     
-    # Basketball orange color range in HSV format 
-    lower_orange = np.array([5, 100, 100])
-    upper_orange = np.array([20, 255, 255])
-    # Using a more fixed, pure orange color range : did not work ball not being detected anymore
-    #lower_orange = np.array([10, 200, 200])
-    #upper_orange = np.array([20, 255, 255])
+    #  HSV RANGE TUNING FOR ORANGE-BROWN BALL 
+    lower_orange = np.array([5, 40, 40])
+    upper_orange = np.array([25, 255, 255])
     
     mask = cv2.inRange(hsv, lower_orange, upper_orange)
+    cv2.imshow('Ball Mask', mask)
     
     # Morphological ops to clean noise
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
 
     # Find contours
-    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) #second return element is hierarchy of countours which is irrelevant for our application
+    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
-    if contours:
-        # Filter contours by area and circularity
+    min_area = 100
+    hand_distance_threshold = 150  # Only accept circles near a hand (in pixels)
+    
+    if contours and (l_wrist is not None and r_wrist is not None):
         valid_contours = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area > 100:  # Minimum area threshold
+            if area > min_area:
                 perimeter = cv2.arcLength(contour, True)
                 if perimeter > 0:
                     circularity = 4 * np.pi * area / (perimeter * perimeter)
-                    if circularity > 0.3:  # Circularity threshold
-                        valid_contours.append(contour)
-        
+                    if circularity > 0.3:
+                        (x, y), radius = cv2.minEnclosingCircle(contour)
+                        center = np.array([x, y])
+                        # Distance to both hands
+                        dist_l = np.linalg.norm(center - np.array(l_wrist))
+                        dist_r = np.linalg.norm(center - np.array(r_wrist))
+                        if min(dist_l, dist_r) < hand_distance_threshold:
+                            valid_contours.append((contour, center, int(radius)))
         if valid_contours:
-            largest = max(valid_contours, key=cv2.contourArea)
-            (x, y), radius = cv2.minEnclosingCircle(largest)
-            center = (int(x), int(y))
-            radius = int(radius)
-            return center, radius
+            # Pick the largest valid contour
+            largest = max(valid_contours, key=lambda tup: cv2.contourArea(tup[0]))
+            _, center, radius = largest
+            return tuple(center.astype(int)), radius
     return None, None
 
 #returns boolean value
@@ -297,6 +301,12 @@ def main():
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = pose.process(rgb_frame)
         
+        # Initialize variables
+        ball_center = None
+        ball_radius = None
+        l_wrist = None
+        r_wrist = None
+        
         if results.pose_landmarks:
             landmarks = results.pose_landmarks.landmark
             h, w = frame.shape[:2]
@@ -340,7 +350,7 @@ def main():
             l_knee_angle = calculate_angle(l_hip, l_knee, l_ankle)
             r_knee_angle = calculate_angle(r_hip, r_knee, r_ankle)
             
-            ball_center, ball_radius = detect_ball(frame)
+            ball_center, ball_radius = detect_ball(frame, l_wrist, r_wrist)
 
             if ball_center:
                 cv2.circle(frame, ball_center, ball_radius, (0, 140, 255), 2)
