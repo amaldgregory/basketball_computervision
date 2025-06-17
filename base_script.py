@@ -5,6 +5,13 @@ import math
 import time
 import argparse
 
+from ultralytics import YOLO
+import numpy as np
+
+# Load custom-trained YOLOv8 model
+model = YOLO("basketballModel.pt")
+ 
+
 # Initialize MediaPipe
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
@@ -129,48 +136,44 @@ def record_shot_data(angles, score, success):
     shot_data.append(shot_record)
     form_scores.append(score)
 
-#returns (x,y coordinates)
-def detect_ball(frame, l_wrist=None, r_wrist=None):
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    
-    #  HSV RANGE TUNING FOR ORANGE-BROWN BALL 
-    lower_orange = np.array([5, 40, 40])
-    upper_orange = np.array([25, 255, 255])
-    
-    mask = cv2.inRange(hsv, lower_orange, upper_orange)
-    cv2.imshow('Ball Mask', mask)
-    
-    # Morphological ops to clean noise
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
 
-    # Find contours
-    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+def detect_ball(frame, l_wrist=None, r_wrist=None):
+    # Run inference on the frame
+    results = model.predict(source=frame, conf=0.4, verbose=False)  # conf threshold can be tuned
     
-    min_area = 100
-    hand_distance_threshold = 150  # Only accept circles near a hand (in pixels)
-    
-    if contours and (l_wrist is not None and r_wrist is not None):
-        valid_contours = []
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if area > min_area:
-                perimeter = cv2.arcLength(contour, True)
-                if perimeter > 0:
-                    circularity = 4 * np.pi * area / (perimeter * perimeter)
-                    if circularity > 0.3:
-                        (x, y), radius = cv2.minEnclosingCircle(contour)
-                        center = np.array([x, y])
-                        # Distance to both hands
-                        dist_l = np.linalg.norm(center - np.array(l_wrist))
-                        dist_r = np.linalg.norm(center - np.array(r_wrist))
-                        if min(dist_l, dist_r) < hand_distance_threshold:
-                            valid_contours.append((contour, center, int(radius)))
-        if valid_contours:
-            # Pick the largest valid contour
-            largest = max(valid_contours, key=lambda tup: cv2.contourArea(tup[0]))
-            _, center, radius = largest
-            return tuple(center.astype(int)), radius
+    boxes = results[0].boxes  # Get box predictions
+    ball_candidates = []
+
+    for box in boxes:
+        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+        conf = box.conf[0].item()
+        cls = int(box.cls[0].item())  # optional: class index
+
+        center_x = int((x1 + x2) / 2)
+        center_y = int((y1 + y2) / 2)
+        radius = int(max(x2 - x1, y2 - y1) / 2)
+
+        center = np.array([center_x, center_y])
+        dist_l = np.linalg.norm(center - np.array(l_wrist)) if l_wrist is not None else float('inf')
+        dist_r = np.linalg.norm(center - np.array(r_wrist)) if r_wrist is not None else float('inf')
+        min_dist = min(dist_l, dist_r)
+
+        # Prioritize near-hand balls but fall back to anything
+        if min_dist < 150:
+            ball_candidates.append((center_x, center_y, radius))
+        elif len(ball_candidates) == 0:
+            # Accept even if far from hands (ball in air)
+            ball_candidates.append((center_x, center_y, radius))
+        else:
+            ball_candidates.append((center_x, center_y, radius))
+
+    # Choose the best candidate (e.g., largest or first)
+    if ball_candidates:
+        best = ball_candidates[0]
+        return (best[0], best[1]), best[2]
+
     return None, None
+
 
 #returns boolean value
 def is_shot_taken(ball_center, wrist, prev_ball_center, threshold=80):  #increased threshold for more accurate detection
@@ -390,7 +393,7 @@ def main():
                 score, feedback = analyze_shot_form(angles)
                 
                 # Analyze shot success
-                success = analyze_shot_success()
+                success = analyze_shot_success(frame)
                 
                 # Record shot data
                 record_shot_data(angles, score, success)
