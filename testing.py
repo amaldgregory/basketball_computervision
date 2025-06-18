@@ -39,11 +39,11 @@ shot_cooldown = 3.0  # Increased cooldown for more accuracy
 shot_state = "idle"  # States: idle, preparing, shooting, completed
 shot_start_time = 0  # When the current shot started
 
-# Global variables for persistent form score display
+# Global variables for form score display
 latest_form_score = None
 latest_form_feedback = None
 form_display_frames = 0
-FORM_DISPLAY_DURATION = 60  # Show form score for 60 frames (about 2 seconds at 30fps)
+FORM_DISPLAY_DURATION = 60  # Show form score for 60 frames - 2 seconds due to 30fps
 
 def initialize_video(video_source):
     return cv2.VideoCapture(video_source) if isinstance(video_source, str) else cv2.VideoCapture(video_source)
@@ -53,7 +53,7 @@ def clean_positions(pos_list, max_age=1.0):
     return [p for p in pos_list if current_time - p[1] < max_age]
 
 def calculate_angle(a, b, c):
-    """Calculate angle between three points"""
+    #Calculate angle between three points
     a = np.array(a)  # First point
     b = np.array(b)  # Mid point
     c = np.array(c)  # End point
@@ -67,7 +67,7 @@ def calculate_angle(a, b, c):
     return angle
 
 def analyze_shot_success():
-    """Analyze if the shot was successful based on ball trajectory"""
+    #Analyze if the shot was successful based on ball trajectory
     global ball_trajectory, shot_success, successful_shots
     
     if len(ball_trajectory) < 10:
@@ -103,7 +103,7 @@ def analyze_shot_success():
     return shot_success
 
 def analyze_shot_form(angles):
-    """Enhanced shot form analysis with scoring"""
+    #Enhanced shot form analysis with scoring
     global previous_angles
     
     l_angle, r_angle, l_knee_angle, r_knee_angle = angles
@@ -134,7 +134,7 @@ def analyze_shot_form(angles):
     return score, feedback
 
 def record_shot_data(angles, score, success):
-    """Record shot data for analysis"""
+    #Record shot data for analysis
     global total_shots, shot_data, form_scores
     
     shot_record = {
@@ -153,7 +153,7 @@ def record_shot_data(angles, score, success):
     form_scores.append(score)
 
 def detect_shot_phase(ball_center, l_wrist, r_wrist, prev_ball_center, current_time):
-    """Detect different phases of a shot and manage shot state"""
+    #Detect different phases of a shot and manage shot state
     global shot_state, shot_start_time, last_shot_time
     
     if ball_center is None or prev_ball_center is None:
@@ -168,7 +168,7 @@ def detect_shot_phase(ball_center, l_wrist, r_wrist, prev_ball_center, current_t
     # Use the minimum distance to either hand (ball should be away from both hands for a shot)
     min_hand_dist = min(l_hand_dist, r_hand_dist)
     
-    # State machine for shot detection
+    # Different phases classification during a shot
     if shot_state == "idle":
         # Check if enough time has passed since last shot
         if current_time - last_shot_time < shot_cooldown:
@@ -235,9 +235,9 @@ def detect_down(ball_pos, hoop_pos):
     return ball_pos[-1][0][1] > hoop_pos[-1][0][1] + 20
 
 def score_shot(path, hoop_pos, frame):
-    print("Entered function")
+    #DEBUG - print("Entered function")
     if not hoop_pos or not path:
-        print("getting stuck here")
+        #DEBUG - print("getting stuck here")
         return False
     hoop_x, hoop_y = hoop_pos[-1][0]
     hoop_w, hoop_h = hoop_pos[-1][2], hoop_pos[-1][3]
@@ -256,7 +256,7 @@ def score_shot(path, hoop_pos, frame):
         if abs(x - hoop_x) < margin_x and abs(y - hoop_y) < margin_y:
             print("shot detected")
             return True
-    print("all the way through the function")
+    #DEBUG - print("all the way through the function")
     return False
 
 def process_shot_detection(frame, angles=None):
@@ -290,14 +290,13 @@ def process_shot_detection(frame, angles=None):
             overlay_color = (255, 0, 0)
             overlay_text = "Miss"
 
-        # --- FORM FEEDBACK PRINT LOGIC ---
+        #form feedback print
         if angles is not None:
             score, feedback = analyze_shot_form(angles)
             reason = feedback[0] if feedback else 'Good form'
             print(f"Form Score: {score}/100 - {reason}")
         else:
             print("Form Score: N/A - Could not detect player pose for this shot.")
-        # --- END FORM FEEDBACK PRINT LOGIC ---
 
         fade_counter = fade_frames
         shot_ball_path.clear()
@@ -420,19 +419,19 @@ def main():
                     ball_trajectory.pop(0)
 
             # Display angles on frame
-            cv2.putText(frame, f'L Elbow: {int(l_angle)}°', 
+            cv2.putText(frame, f'L Elbow: {int(l_angle)}o', 
                (int(l_elbow[0]) - 50, int(l_elbow[1]) - 20), 
                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-            cv2.putText(frame, f'R Elbow: {int(r_angle)}°', 
+            cv2.putText(frame, f'R Elbow: {int(r_angle)}o', 
                (int(r_elbow[0]) + 10, int(r_elbow[1]) - 20), 
                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
             
-            cv2.putText(frame, f'R Knee: {int(r_knee_angle)}°',
+            cv2.putText(frame, f'R Knee: {int(r_knee_angle)}o',
                 (int(r_knee[0]) - 30, int(r_knee[1]) - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
             
-            cv2.putText(frame, f'L Knee: {int(l_knee_angle)}°',
+            cv2.putText(frame, f'L Knee: {int(l_knee_angle)}o',
                 (int(l_knee[0]) - 30, int(l_knee[1]) - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
@@ -454,11 +453,11 @@ def main():
                 # Update previous angles for consistency
                 previous_angles['elbow'] = r_angle
                 
-                # Print form score and explanation to terminal (single line)
+                # Print form score and explanation to terminal
                 reason = feedback[0] if feedback else 'Good form'
                 print(f"Form Score: {score}/100 - {reason}")
                 
-                # Display enhanced feedback (keep only verdict overlay, not form score/feedback)
+                # Display enhanced feedback
                 verdict_predictor(l_angle=l_angle, r_angle=r_angle, l_knee_angle=l_knee_angle, r_knee_angle=r_knee_angle, frame=frame)
 
             prev_ball_center = ball_center
