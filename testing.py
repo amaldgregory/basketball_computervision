@@ -242,8 +242,8 @@ def score_shot(path, hoop_pos, frame):
     hoop_x, hoop_y = hoop_pos[-1][0]
     hoop_w, hoop_h = hoop_pos[-1][2], hoop_pos[-1][3]
 
-    margin_x = int(hoop_w * 0.5)
-    margin_y = int(hoop_h * 0.5)
+    margin_x = int(hoop_w * 1.0)
+    margin_y = int(hoop_h * 1.0)
 
     top_left = (int(hoop_x - margin_x), int(hoop_y - margin_y))
     bottom_right = (int(hoop_x + margin_x), int(hoop_y + margin_y))
