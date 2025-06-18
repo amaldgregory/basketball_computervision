@@ -69,6 +69,12 @@ The intersection of sports and AI continues to fascinate us, and we're excited t
 
 ---
 
+## Acknowledgements
+
+We would like to thank [Avi Shah](https://github.com/avishah3) for the his [basketball and hoop detection model](https://github.com/avishah3/AI-Basketball-Shot-Detection-Tracker), which we adapted and integrated into our system. His work served as a valuable foundation for our shot form analysis project.
+
+---
+
 ## How to Run
 
 1. **Clone the repository**
